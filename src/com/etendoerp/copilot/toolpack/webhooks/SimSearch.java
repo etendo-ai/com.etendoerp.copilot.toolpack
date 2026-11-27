@@ -259,7 +259,7 @@ public class SimSearch extends BaseWebhookService {
       applyTrgmThresholds(session, minSimPercent);
     }
     String sql = buildIndexedSql(tableName, pkColumn, idColumns, entity.isClientEnabled(),
-        entity.isOrganizationEnabled(), useOperators);
+        entity.isOrganizationEnabled(), entity.isActiveEnabled(), useOperators);
     NativeQuery<Object[]> query = bindIndexedParameters(session, sql, tableName, searchTerm,
         entity, minSimPercent, qtyResults);
     return mapIndexedRows(query.list());
@@ -277,7 +277,7 @@ public class SimSearch extends BaseWebhookService {
   }
 
   static String buildIndexedSql(String tableName, String pkColumn, List<String> idColumns,
-      boolean hasClient, boolean hasOrg, boolean useOperators) {
+      boolean hasClient, boolean hasOrg, boolean hasActive, boolean useOperators) {
     List<String> scoreParts = new ArrayList<>(idColumns.size() * 2);
     List<String> opPreds = new ArrayList<>(idColumns.size() * 2);
     for (String col : idColumns) {
@@ -314,6 +314,11 @@ public class SimSearch extends BaseWebhookService {
     }
     if (hasOrg) {
       sql.append("t.ad_org_id in (:orgs) and ");
+    }
+    // Inactive records are not valid candidates (the HQL path filters them through OBQuery); only
+    // tables that actually have an isactive column can be filtered.
+    if (hasActive) {
+      sql.append("t.isactive = 'Y' and ");
     }
     if (useOperators) {
       sql.append("(").append(String.join(" or ", opPreds)).append(") and ");
