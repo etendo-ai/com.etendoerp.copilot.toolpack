@@ -56,7 +56,7 @@ public class SimSearchHelpersTest extends WeldBaseTest {
   @Test
   public void buildIndexedSqlBranches() {
     String sqlAll = SimSearch.buildIndexedSql(AD_TABLE, "ad_table_id",
-        Arrays.asList("name"), true, true, true);
+        Arrays.asList("name"), true, true, true, true);
     assertTrue(sqlAll.contains("ad_client_id in (:clients)"));
     assertTrue(sqlAll.contains("ad_org_id in (:orgs)"));
     assertTrue(sqlAll.contains("upper(t.name) % upper(:term)"));
@@ -66,7 +66,7 @@ public class SimSearchHelpersTest extends WeldBaseTest {
     assertTrue(sqlAll.contains("limit :qty"));
 
     String sqlMinimal = SimSearch.buildIndexedSql("m_product", "m_product_id",
-        Arrays.asList("value", "name"), false, false, false);
+        Arrays.asList("value", "name"), false, false, false, false);
     assertFalse(sqlMinimal.contains("ad_client_id"));
     assertFalse(sqlMinimal.contains("ad_org_id"));
     assertFalse(sqlMinimal.contains(" % "));
@@ -75,9 +75,30 @@ public class SimSearchHelpersTest extends WeldBaseTest {
     assertTrue(sqlMinimal.contains("similarity(upper(t.name), upper(:term))"));
 
     String sqlClientOnly = SimSearch.buildIndexedSql(AD_TABLE, "ad_table_id",
-        Arrays.asList("name"), true, false, false);
+        Arrays.asList("name"), true, false, false, false);
     assertTrue(sqlClientOnly.contains("ad_client_id in (:clients)"));
     assertFalse(sqlClientOnly.contains("ad_org_id"));
+  }
+
+  /**
+   * Inactive records must not be candidates: the active predicate is emitted only for entities
+   * whose table has an isactive column, whatever the client/org/operator flags are.
+   */
+  @Test
+  public void buildIndexedSqlFiltersActiveOnlyWhenEnabled() {
+    String active = "t.isactive = 'Y'";
+    List<String> cols = Arrays.asList("name");
+    assertTrue(SimSearch.buildIndexedSql(AD_TABLE, "ad_table_id", cols, true, true, true, true).contains(active));
+    assertTrue(SimSearch.buildIndexedSql(AD_TABLE, "ad_table_id", cols, true, false, true, false).contains(active));
+    assertTrue(SimSearch.buildIndexedSql(AD_TABLE, "ad_table_id", cols, false, true, true, false).contains(active));
+    assertTrue(SimSearch.buildIndexedSql(AD_TABLE, "ad_table_id", cols, false, false, true, false).contains(active));
+    assertFalse(SimSearch.buildIndexedSql(AD_TABLE, "ad_table_id", cols, true, true, false, true).contains("isactive"));
+    assertFalse(SimSearch.buildIndexedSql(AD_TABLE, "ad_table_id", cols, false, false, false, false)
+        .contains("isactive"));
+    // the predicate sits in the where clause, before the similarity inclusion test
+    String sql = SimSearch.buildIndexedSql(AD_TABLE, "ad_table_id", cols, false, false, true, false);
+    assertTrue(sql.indexOf(active) < sql.indexOf("> :minPct"));
+    assertTrue(sql.contains("where t.isactive = 'Y' and "));
   }
 
   /**
@@ -88,7 +109,7 @@ public class SimSearchHelpersTest extends WeldBaseTest {
    */
   @Test
   public void buildIndexedSqlReportsTextSimilarityAndBreaksTies() {
-    String sql = SimSearch.buildIndexedSql("c_uom", "c_uom_id", Arrays.asList("name"), true, false, false);
+    String sql = SimSearch.buildIndexedSql("c_uom", "c_uom_id", Arrays.asList("name"), true, false, false, false);
     assertTrue(sql.contains("as text_score"));
     assertTrue(sql.contains("upper(t.name) = upper(:term)"));
     assertTrue(sql.contains(" as exact_match"));
@@ -97,7 +118,7 @@ public class SimSearchHelpersTest extends WeldBaseTest {
     assertTrue(sql.contains("word_similarity(upper(:term), upper(t.name))"));
 
     String multi = SimSearch.buildIndexedSql("m_product", "m_product_id",
-        Arrays.asList("value", "name"), false, false, false);
+        Arrays.asList("value", "name"), false, false, false, false);
     assertTrue(multi.contains("upper(t.value) = upper(:term) or upper(t.name) = upper(:term)"));
   }
 
